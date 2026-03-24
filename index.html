@@ -328,9 +328,17 @@ function formatFactor(value) {
   });
 }
 
-function formatCapacityFactor(value) {
+function formatCapacityFactor(value, sectorName) {
   if (value == null || value === "" || isNaN(Number(value))) return "N/A";
+
   const num = Number(value);
+
+  // Refinery: show as days
+  if (sectorName === "Refinery") {
+    return `${formatNumber(num, 3)} days`;
+  }
+
+  // Other sectors: show as decimal + percent
   return `${num.toFixed(4)} (${(num * 100).toFixed(2)}%)`;
 }
 
@@ -491,8 +499,8 @@ function loadSector(sectorName, config) {
            CO₂ estimate: ${formatNumber(emissions, 3)} t<br>
            Generation: ${formatNumber(activity, 3)} ${escapeHtml(activityUnits)}<br>
            Capacity: ${formatNumber(capacity, 3)} ${escapeHtml(capacityUnits)}<br>
-           Generation factor: ${formatFactor(emissionFactor)} ${escapeHtml(emissionFactorUnits)}<br>
-           Capacity factor: ${formatCapacityFactor(capacityFactor)}`
+           Emission factor: ${formatFactor(emissionFactor)} ${escapeHtml(emissionFactorUnits)}<br>
+           Capacity factor: ${formatCapacityFactor(capacityFactor, sectorName)}`
         );
 
         marker.on("mouseover", function() {
