@@ -41,7 +41,6 @@ html,body{
   width:100vw;
 }
 
-/* ===== Leaflet controls: modern card style ===== */
 .leaflet-control{
   filter: drop-shadow(0 10px 20px rgba(0,0,0,0.18));
 }
@@ -74,7 +73,6 @@ html,body{
   transform: translateY(1px);
 }
 
-/* Layer control */
 .leaflet-control-layers{
   border-radius: var(--radius);
   border: 1px solid var(--card-border);
@@ -111,7 +109,6 @@ html,body{
   transform: scale(1.05);
 }
 
-/* Zoom buttons */
 .leaflet-bar{
   border: 1px solid var(--card-border);
   border-radius: 12px;
@@ -135,7 +132,6 @@ html,body{
   color: #1d4ed8;
 }
 
-/* Tooltip/Popup polish */
 .leaflet-tooltip{
   border-radius: 10px;
   border: 1px solid rgba(255,255,255,0.35);
@@ -144,28 +140,30 @@ html,body{
   backdrop-filter: blur(10px);
   -webkit-backdrop-filter: blur(10px);
 }
+
 .leaflet-popup-content-wrapper{
   border-radius: 14px;
   border: 1px solid rgba(255,255,255,0.35);
   box-shadow: var(--shadow);
   background: rgba(255,255,255,0.96);
 }
+
 .leaflet-popup-content{
   margin: 12px 14px;
   font-size: 13px;
+  line-height: 1.55;
 }
+
 .leaflet-popup-tip{
   background: rgba(255,255,255,0.96);
 }
 
-/* ===== statistics panel ===== */
 #statsBox{
   position:absolute;
   bottom:20px;
   right:20px;
   width: 360px;
   max-width: calc(100vw - 40px);
-
   background: var(--card);
   border: 1px solid var(--card-border);
   padding: var(--pad);
@@ -173,7 +171,6 @@ html,body{
   box-shadow: var(--shadow);
   z-index:1000;
   font-size: 13px;
-
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
 }
@@ -191,7 +188,6 @@ html,body{
   justify-content: space-between;
   align-items:center;
   gap: 10px;
-
   padding: 10px 12px;
   border-radius: 12px;
   background: rgba(2, 6, 23, 0.05);
@@ -208,12 +204,10 @@ html,body{
   padding: 10px;
 }
 
-/* Subtle “app” feel */
 .leaflet-container{
   outline: none;
 }
 
-/* Responsive */
 @media (max-width: 520px){
   #statsBox{
     right: 12px;
@@ -222,7 +216,6 @@ html,body{
   }
 }
 
-/* Dark mode support (keeps map imagery; only UI changes) */
 @media (prefers-color-scheme: dark){
   :root{
     --card: rgba(15,23,42,0.70);
@@ -333,13 +326,41 @@ function formatCapacityFactor(value, sectorName) {
 
   const num = Number(value);
 
-  // Refinery: show as days
   if (sectorName === "Refinery") {
-    return `${formatNumber(num, 3)} days`;
+    return "See refinery utilization details below";
   }
 
-  // Other sectors: show as decimal + percent
   return `${num.toFixed(4)} (${(num * 100).toFixed(2)}%)`;
+}
+
+function getDaysInYear(year) {
+  const y = Number(year);
+  if (!Number.isFinite(y)) return 365;
+  return new Date(y, 1, 29).getMonth() === 1 ? 366 : 365;
+}
+
+function getRefineryCapacityMetrics(activity, capacity, year) {
+  if (
+    activity == null || activity === "" || isNaN(Number(activity)) ||
+    capacity == null || capacity === "" || isNaN(Number(capacity)) ||
+    Number(capacity) === 0
+  ) {
+    return null;
+  }
+
+  const activityNum = Number(activity);
+  const capacityNum = Number(capacity);
+  const daysInYear = getDaysInYear(year);
+
+  const equivalentDays = activityNum / capacityNum;
+  const utilizationPct = (equivalentDays / daysInYear) * 100;
+
+  return {
+    equivalentDays,
+    utilizationPct,
+    daysInYear,
+    exceedsYear: equivalentDays > daysInYear
+  };
 }
 
 function getEmissionField(row) {
@@ -435,14 +456,14 @@ function loadSector(sectorName, config) {
     download: true,
     header: true,
     dynamicTyping: true,
+    skipEmptyLines: true,
 
     complete: function(results) {
       const validPlants = results.data.filter(row => {
         const e = getEmissionField(row);
-        return row.lat && row.lon && e && e > 0;
+        return row.lat != null && row.lon != null && e != null && e > 0;
       });
 
-      /* find max */
       validPlants.forEach(row => {
         const e = getEmissionField(row);
         if (e > maxEmission) {
@@ -450,7 +471,6 @@ function loadSector(sectorName, config) {
         }
       });
 
-      /* create markers */
       validPlants.forEach(row => {
         const emissions = getEmissionField(row);
         const year = getDisplayYear(row);
@@ -467,9 +487,13 @@ function loadSector(sectorName, config) {
 
         const capacityFactor = getCapacityFactorField(row);
 
+        const refineryMetrics =
+          sectorName === "Refinery"
+            ? getRefineryCapacityMetrics(activity, capacity, year)
+            : null;
+
         sectorSum += emissions;
         plantCount++;
-
         sectorEmissions[sectorName].push(emissions);
 
         const radius =
@@ -492,15 +516,34 @@ function loadSector(sectorName, config) {
           { direction: "top", offset: [0, -6], sticky: true }
         )
         .bindPopup(
-          `<strong>${escapeHtml(row.source_name)}</strong><br>
-           Sector: ${escapeHtml(sectorName)}<br>
-           Source: ${escapeHtml(source)}<br>
-           Year: ${escapeHtml(year)}<br>
-           CO₂ estimate: ${formatNumber(emissions, 3)} t<br>
-           Generation: ${formatNumber(activity, 3)} ${escapeHtml(activityUnits)}<br>
-           Capacity: ${formatNumber(capacity, 3)} ${escapeHtml(capacityUnits)}<br>
-           Emission factor: ${formatFactor(emissionFactor)} ${escapeHtml(emissionFactorUnits)}<br>
-           Capacity factor: ${formatCapacityFactor(capacityFactor, sectorName)}`
+          sectorName === "Refinery"
+            ? `<strong>${escapeHtml(row.source_name)}</strong><br>
+               Sector: ${escapeHtml(sectorName)}<br>
+               Source: ${escapeHtml(source)}<br>
+               Year: ${escapeHtml(year)}<br>
+               CO₂ estimate: ${formatNumber(emissions, 3)} t<br>
+               Generation: ${formatNumber(activity, 3)} ${escapeHtml(activityUnits)}<br>
+               Capacity: ${formatNumber(capacity, 3)} ${escapeHtml(capacityUnits)}<br>
+               Emission factor: ${formatFactor(emissionFactor)} ${escapeHtml(emissionFactorUnits)}<br>
+               Equivalent full-capacity days: ${
+                 refineryMetrics ? formatNumber(refineryMetrics.equivalentDays, 3) + " days" : "N/A"
+               }<br>
+               Implied utilization: ${
+                 refineryMetrics ? formatNumber(refineryMetrics.utilizationPct, 2) + "%" : "N/A"
+               }${
+                 refineryMetrics && refineryMetrics.exceedsYear
+                   ? `<br><span style="color:#b45309;"><em>Note: exceeds ${refineryMetrics.daysInYear} days, so the source implies >100% annual utilization or a possible unit/capacity mismatch.</em></span>`
+                   : ""
+               }`
+            : `<strong>${escapeHtml(row.source_name)}</strong><br>
+               Sector: ${escapeHtml(sectorName)}<br>
+               Source: ${escapeHtml(source)}<br>
+               Year: ${escapeHtml(year)}<br>
+               CO₂ estimate: ${formatNumber(emissions, 3)} t<br>
+               Generation: ${formatNumber(activity, 3)} ${escapeHtml(activityUnits)}<br>
+               Capacity: ${formatNumber(capacity, 3)} ${escapeHtml(capacityUnits)}<br>
+               Emission factor: ${formatFactor(emissionFactor)} ${escapeHtml(emissionFactorUnits)}<br>
+               Capacity factor: ${formatCapacityFactor(capacityFactor, sectorName)}`
         );
 
         marker.on("mouseover", function() {
@@ -527,7 +570,8 @@ function loadSector(sectorName, config) {
 }
 
 
-/* load all sectors */
+/* ================= LOAD ALL SECTORS ================= */
+
 Object.entries(sectors).forEach(([name, cfg]) => {
   loadSector(name, cfg);
 });
@@ -644,10 +688,7 @@ function updateEmissionStats() {
     labels.push((start / 1e6).toFixed(2));
 
     emissions.forEach(e => {
-      if (
-        (e >= start && e < end) ||
-        (i === bins - 1 && e === max)
-      ) {
+      if ((e >= start && e < end) || (i === bins - 1 && e === max)) {
         histogram[i]++;
       }
     });
